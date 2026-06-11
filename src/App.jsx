@@ -45,6 +45,7 @@ export default function App() {
   const [bunga, setBunga] = useState('')
   const [totalLangsung, setTotalLangsung] = useState('')
   const [tenor, setTenor] = useState('')
+  const [tenorUnit, setTenorUnit] = useState('tahun')
   const [hasil, setHasil] = useState(null)
   const [error, setError] = useState('')
 
@@ -75,8 +76,11 @@ export default function App() {
       setError('Masukkan jumlah cicilan baru.'); return
     }
 
-    const T = parseInt(tenor, 10)
-    if (!T || T <= 0) { setError('Masukkan tenor pinjaman.'); return }
+    const tenorVal = parseInt(tenor, 10)
+    if (!tenorVal || tenorVal <= 0) { setError('Masukkan tenor pinjaman.'); return }
+
+    const T_bulan = tenorUnit === 'tahun' ? tenorVal * 12 : tenorVal
+    const T_tahun = T_bulan / 12
 
     const totalCicilanLama = cicilanLama.reduce((sum, c) => sum + parseNum(c.amount), 0)
     const totalCicilan = cicilanBaruPerBulan + totalCicilanLama
@@ -99,21 +103,33 @@ export default function App() {
     }
 
     const proyeksi = []
-    for (let y = 0; y <= T; y++) {
-      const dayaBeli = sisa / Math.pow(1.1, y)
-      proyeksi.push({
-        tahun: `Thn ${y}`,
-        'Sisa Nominal': Math.round(sisa),
-        'Daya Beli Riil': Math.round(dayaBeli),
-        penurunan: y === 0 ? 0 : (1 - 1 / Math.pow(1.1, y)) * 100
-      })
+    if (tenorUnit === 'bulan') {
+      for (let m = 0; m <= T_bulan; m++) {
+        const dayaBeli = sisa / Math.pow(1.1, m / 12)
+        proyeksi.push({
+          label: `Bln ${m}`,
+          'Sisa Nominal': Math.round(sisa),
+          'Daya Beli Riil': Math.round(dayaBeli),
+          penurunan: m === 0 ? 0 : (1 - 1 / Math.pow(1.1, m / 12)) * 100
+        })
+      }
+    } else {
+      for (let y = 0; y <= T_tahun; y++) {
+        const dayaBeli = sisa / Math.pow(1.1, y)
+        proyeksi.push({
+          label: `Thn ${y}`,
+          'Sisa Nominal': Math.round(sisa),
+          'Daya Beli Riil': Math.round(dayaBeli),
+          penurunan: y === 0 ? 0 : (1 - 1 / Math.pow(1.1, y)) * 100
+        })
+      }
     }
 
-    const totalDibayar = cicilanBaruPerBulan * T * 12
-    const totalPokok = !useTotal ? parseNum(pokok) * T * 12 : null
-    const totalBunga = !useTotal ? parseNum(bunga) * T * 12 : null
+    const totalDibayar = cicilanBaruPerBulan * T_bulan
+    const totalPokok = !useTotal ? parseNum(pokok) * T_bulan : null
+    const totalBunga = !useTotal ? parseNum(bunga) * T_bulan : null
 
-    setHasil({ G, totalCicilan, cicilanBaruPerBulan, rasio, sisa, status, warna, pesan, proyeksi, totalDibayar, totalPokok, totalBunga, T })
+    setHasil({ G, totalCicilan, cicilanBaruPerBulan, rasio, sisa, status, warna, pesan, proyeksi, totalDibayar, totalPokok, totalBunga, T_bulan, T_tahun, tenorVal, tenorUnit })
     setTimeout(() => {
       document.getElementById('hasil-section')?.scrollIntoView({ behavior: 'smooth' })
     }, 50)
@@ -239,13 +255,20 @@ export default function App() {
               <input
                 type="number"
                 min="1"
-                max="30"
+                max={tenorUnit === 'tahun' ? 30 : 360}
                 value={tenor}
                 onChange={(e) => setTenor(e.target.value)}
-                placeholder="3"
+                placeholder={tenorUnit === 'tahun' ? '3' : '12'}
                 className="w-24 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <span className="text-sm text-slate-500">tahun</span>
+              <select
+                value={tenorUnit}
+                onChange={(e) => { setTenorUnit(e.target.value); setTenor('') }}
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="tahun">Tahun</option>
+                <option value="bulan">Bulan</option>
+              </select>
             </div>
           </div>
 
@@ -300,7 +323,7 @@ export default function App() {
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Ringkasan Total Pinjaman Baru</h3>
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Total dibayarkan selama {hasil.T} tahun</span>
+                  <span className="text-slate-500">Total dibayarkan selama {hasil.tenorVal} {hasil.tenorUnit}</span>
                   <span className="font-semibold text-slate-800">{formatRupiah(hasil.totalDibayar)}</span>
                 </div>
                 {hasil.totalPokok !== null && (
@@ -325,14 +348,16 @@ export default function App() {
 
             {/* Chart */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Proyeksi Daya Beli Sisa Uang per Tahun</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-1">
+                Proyeksi Daya Beli Sisa Uang per {hasil.tenorUnit === 'bulan' ? 'Bulan' : 'Tahun'}
+              </h3>
               <p className="text-xs text-slate-500 mb-4">
                 Gaji dan cicilan nominal tidak berubah — tapi daya beli sisa uangmu turun 10% setiap tahun karena inflasi. Makin lama tenornya, makin terasa.
               </p>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={hasil.proyeksi} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="tahun" tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis
                     tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}jt` : `${(v / 1000).toFixed(0)}rb`}
                     tick={{ fontSize: 10 }}
@@ -348,11 +373,13 @@ export default function App() {
 
             {/* Table */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm overflow-x-auto">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Tabel Proyeksi Per Tahun</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                Tabel Proyeksi per {hasil.tenorUnit === 'bulan' ? 'Bulan' : 'Tahun'}
+              </h3>
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-xs uppercase">
-                    <th className="text-left px-3 py-2 font-semibold rounded-tl-lg">Tahun</th>
+                    <th className="text-left px-3 py-2 font-semibold rounded-tl-lg">{hasil.tenorUnit === 'bulan' ? 'Bulan' : 'Tahun'}</th>
                     <th className="text-right px-3 py-2 font-semibold">Sisa Nominal/bln</th>
                     <th className="text-right px-3 py-2 font-semibold">Daya Beli Riil/bln</th>
                     <th className="text-right px-3 py-2 font-semibold rounded-tr-lg">Penurunan</th>
@@ -366,7 +393,7 @@ export default function App() {
                         key={i}
                         className={`border-t border-slate-100 ${isWarning ? 'bg-red-50' : i % 2 === 0 ? '' : 'bg-slate-50/40'}`}
                       >
-                        <td className="px-3 py-2 font-medium text-slate-700">Tahun {i}</td>
+                        <td className="px-3 py-2 font-medium text-slate-700">{row.label}</td>
                         <td className="px-3 py-2 text-right text-slate-600">{formatRupiah(row['Sisa Nominal'])}</td>
                         <td className={`px-3 py-2 text-right font-medium ${isWarning ? 'text-red-600' : 'text-orange-600'}`}>
                           {formatRupiah(row['Daya Beli Riil'])}
